@@ -6,8 +6,11 @@ The api is expected to enable transfer of money  from wallet account to bank acc
 // UML Sequence Diagram
 
 User -initiate request-> router Engine
+
 router Engine -Check if the funds are available-> Wallet
+
 Wallet -. funds available-> router Engine
+
 router Engine -. verify user and funds -> User
 
 router Engine - persist transaction -> router Engine
