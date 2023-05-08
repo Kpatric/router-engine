@@ -46,33 +46,30 @@ public class TransactionService {
                 .destinationAccount(paymentRequest.getDestination().getAccount().getAccountNumber())
                 .sourceAccount(paymentRequest.getSource().getAccount().getAccountNumber())
                 .amount(paymentRequest.getAmount())
-                .status("Processing")
                 .build();
         transactionRepository.save(tranData);
-
-
-
-
         //check wallet balance first.
         String checkBalanceUrl = baseUrl + walletBalanceEndpoint + "?user_id=" + user_id;
         var balanceResponse = httpClient.getRestTemplate()
                 .getForObject(checkBalanceUrl, BalanceResponse.class);
         //if there is available funds as compared to amount to transfer, initiate transfer else cancel
         if (balanceResponse.getBalance() < paymentRequest.getAmount()) {
-            return "Insufficient funds in the wallet";
+            tranData.setWalletStatus("Insufficient funds in the wallet");
+            transactionRepository.save(tranData);
+            return tranData;
         }
         var transferRequest = makePayment(paymentRequest);
         //if response code is 200 mark as successful and update balance
         if (!(transferRequest.getStatusCode() == HttpStatus.OK)) {
-            return transferRequest;
+            tranData.setBankStatus("Bank posting failed");
+            transactionRepository.save(tranData);
+            return tranData;
         }
         //update wallet balance
         var updateWalletBalance = updateWallet(paymentRequest.getAmount(), user_id);
-
-
-        return balanceResponse;
-
-
+        tranData.setWalletStatus("Transfer successful");
+        transactionRepository.save(tranData);
+        return tranData;
     }
 
 

@@ -1,6 +1,6 @@
-package com.api.paybylink.utils;
+package com.ontop.routerengine.utils;
 
-import com.api.paybylink.models.ErrorDetails;
+import com.ontop.routerengine.model.ErrorDetails;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;

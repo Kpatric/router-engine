@@ -27,5 +27,6 @@ public class Transaction {
     public LocalDateTime transactionDate;
     public String sourceAccount;
     public String destinationAccount;
-    public String status;
+    public String bankStatus;
+    public String walletStatus;
 }
