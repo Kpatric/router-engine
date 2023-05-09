@@ -59,3 +59,5 @@ What I could have done better
 2.I could have have included cloud architecture in my design
 
 3.I could have used k8s for orchestration
+
+4.I could have improved my error handling
