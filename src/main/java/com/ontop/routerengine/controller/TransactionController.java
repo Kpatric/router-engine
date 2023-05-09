@@ -18,7 +18,6 @@ public class TransactionController {
 
     @PostMapping("/transfer")
     public Object walletTransfer(@RequestBody PaymentRequest paymentRequest, @RequestParam Long user_id) {
-        var response = transactionService.processPayment(paymentRequest,user_id);
-        return response;
+        return transactionService.processPayment(paymentRequest,user_id);
     }
 }

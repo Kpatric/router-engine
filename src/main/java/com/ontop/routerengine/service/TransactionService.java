@@ -14,6 +14,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestClientException;
 
 import java.time.LocalDateTime;
 
@@ -67,7 +70,8 @@ public class TransactionService {
         }
         //update wallet balance
         var updateWalletBalance = updateWallet(paymentRequest.getAmount(), user_id);
-        tranData.setWalletStatus("Transfer successful");
+        System.out.println(transferRequest);
+        tranData.setWalletStatus("Transfer successful" );
         transactionRepository.save(tranData);
         return tranData;
     }
@@ -76,11 +80,29 @@ public class TransactionService {
     private ResponseEntity<Object> makePayment(PaymentRequest paymentRequest) {
         var calculateCharges = Utils.calculateFee(paymentRequest.getAmount());
         paymentRequest.setAmount(paymentRequest.getAmount() - calculateCharges);
-        String postPaymentUrl = baseUrl + bankEndPoint;
-        return httpClient.getRestTemplate()
-                .postForEntity(postPaymentUrl, paymentRequest, Object.class);
 
+        String postPaymentUrl = baseUrl + bankEndPoint;
+
+        try {
+            ResponseEntity<Object> responseEntity = httpClient.getRestTemplate()
+                    .postForEntity(postPaymentUrl, paymentRequest, Object.class);
+            return responseEntity;
+        } catch (HttpServerErrorException | HttpClientErrorException e) {
+            // handle 4xx and 5xx status codes
+            ResponseEntity<Object> errorResponseEntity = ResponseEntity
+                    .status(e.getStatusCode())
+                    .body(e.getResponseBodyAsString());
+            return errorResponseEntity;
+        } catch (RestClientException e) {
+            // handle other types of exceptions
+            // e.g., connection refused, timeout, etc.
+            ResponseEntity<Object> errorResponseEntity = ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(e.getMessage());
+            return errorResponseEntity;
+        }
     }
+
 
     private ResponseEntity<Object> updateWallet(double amount, Long user_id) {
         String postWalletUpdateUrl = baseUrl + walletEndpoint;
