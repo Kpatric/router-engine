@@ -1,0 +1,30 @@
+version: '3.1'
+services:
+  app:
+    image: 'router-engine:latest'
+    build: ./
+    ports:
+      - 8080:8080
+    container_name: router-engine-app
+    depends_on:
+      - db
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/router-engine
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=Pass@123
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create
+
+  db:
+    image: 'postgres:13.1-alpine'
+    ports:
+      - 5433:5432
+    container_name: router-engine-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Pass@123
+      - POSTGRES_DB=router-engine
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
