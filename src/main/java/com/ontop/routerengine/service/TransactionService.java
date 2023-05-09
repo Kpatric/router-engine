@@ -6,17 +6,15 @@ import com.ontop.routerengine.model.BalanceResponse;
 import com.ontop.routerengine.model.PaymentRequest;
 import com.ontop.routerengine.model.Transaction;
 import com.ontop.routerengine.repository.TransactionRepository;
+import com.ontop.routerengine.utils.RestClientUtils;
 import com.ontop.routerengine.utils.Utils;
-import com.ontop.routerengine.utils.Utils.*;
-import jdk.jshell.execution.Util;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestClientException;
 
 import java.time.LocalDateTime;
 
@@ -40,10 +38,37 @@ public class TransactionService {
     @Autowired
     private TransactionRepository transactionRepository;
 
+    private Logger logger = LoggerFactory.getLogger(TransactionService.class);
 
     public Object processPayment(PaymentRequest paymentRequest, Long user_id) {
-        //persist transaction for reporting
-        var tranData = Transaction.builder().transactionDate(LocalDateTime.now())
+        Transaction tranData = persistTransaction(paymentRequest, user_id);
+        BalanceResponse balanceResponse = checkWalletBalance(user_id);
+        logger.info("Received balance response for {}", balanceResponse);
+
+        if (!hasSufficientFunds(balanceResponse, paymentRequest.getAmount())) {
+            updateTransactionStatus(tranData, "Insufficient funds in the wallet");
+            return tranData;
+        }
+
+        double chargeAmount = calculateCharge(paymentRequest.getAmount());
+        double netTransferAmount = paymentRequest.getAmount() - chargeAmount;
+        ResponseEntity<Object> transferRequest = postTransferRequest(paymentRequest, chargeAmount);
+        logger.info("Received transfer response for {}", transferRequest);
+
+        if (!isTransferSuccessful(transferRequest)) {
+            updateTransactionStatus(tranData, "Bank posting failed");
+            return tranData;
+        }
+
+
+        updateWalletBalance(user_id, -netTransferAmount);
+        updateTransactionStatus(tranData, "Transfer successful");
+        return tranData;
+    }
+
+    private Transaction persistTransaction(PaymentRequest paymentRequest, Long user_id) {
+        Transaction tranData = Transaction.builder()
+                .transactionDate(LocalDateTime.now())
                 .serviceName("Transfer")
                 .charge(0.0)
                 .destinationAccount(paymentRequest.getDestination().getAccount().getAccountNumber())
@@ -51,66 +76,47 @@ public class TransactionService {
                 .amount(paymentRequest.getAmount())
                 .build();
         transactionRepository.save(tranData);
-        //check wallet balance first.
-        String checkBalanceUrl = baseUrl + walletBalanceEndpoint + "?user_id=" + user_id;
-        var balanceResponse = httpClient.getRestTemplate()
-                .getForObject(checkBalanceUrl, BalanceResponse.class);
-        //if there is available funds as compared to amount to transfer, initiate transfer else cancel
-        if (balanceResponse.getBalance() < paymentRequest.getAmount()) {
-            tranData.setWalletStatus("Insufficient funds in the wallet");
-            transactionRepository.save(tranData);
-            return tranData;
-        }
-        var transferRequest = makePayment(paymentRequest);
-        //if response code is 200 mark as successful and update balance
-        if (!(transferRequest.getStatusCode() == HttpStatus.OK)) {
-            tranData.setBankStatus("Bank posting failed");
-            transactionRepository.save(tranData);
-            return tranData;
-        }
-        //update wallet balance
-        var updateWalletBalance = updateWallet(paymentRequest.getAmount(), user_id);
-        System.out.println(transferRequest);
-        tranData.setWalletStatus("Transfer successful" );
-        transactionRepository.save(tranData);
         return tranData;
     }
 
-
-    private ResponseEntity<Object> makePayment(PaymentRequest paymentRequest) {
-        var calculateCharges = Utils.calculateFee(paymentRequest.getAmount());
-        paymentRequest.setAmount(paymentRequest.getAmount() - calculateCharges);
-
-        String postPaymentUrl = baseUrl + bankEndPoint;
-
-        try {
-            ResponseEntity<Object> responseEntity = httpClient.getRestTemplate()
-                    .postForEntity(postPaymentUrl, paymentRequest, Object.class);
-            return responseEntity;
-        } catch (HttpServerErrorException | HttpClientErrorException e) {
-            // handle 4xx and 5xx status codes
-            ResponseEntity<Object> errorResponseEntity = ResponseEntity
-                    .status(e.getStatusCode())
-                    .body(e.getResponseBodyAsString());
-            return errorResponseEntity;
-        } catch (RestClientException e) {
-            // handle other types of exceptions
-            // e.g., connection refused, timeout, etc.
-            ResponseEntity<Object> errorResponseEntity = ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(e.getMessage());
-            return errorResponseEntity;
-        }
+    private BalanceResponse checkWalletBalance(Long user_id) {
+        String checkBalanceUrl = baseUrl + walletBalanceEndpoint + "?user_id=" + user_id;
+        return RestClientUtils.getRequest(httpClient, checkBalanceUrl);
     }
 
+    private boolean hasSufficientFunds(BalanceResponse balanceResponse, double transferAmount) {
+        return balanceResponse.getBalance() >= transferAmount;
+    }
 
-    private ResponseEntity<Object> updateWallet(double amount, Long user_id) {
-        String postWalletUpdateUrl = baseUrl + walletEndpoint;
+    private double calculateCharge(double transferAmount) {
+        return Utils.calculateFee(transferAmount);
+    }
+
+    private ResponseEntity<Object> postTransferRequest(PaymentRequest paymentRequest, double chargeAmount) {
+        double netTransferAmount = paymentRequest.getAmount() - chargeAmount;
+        paymentRequest.setAmount(netTransferAmount);
+        String postPaymentUrl = baseUrl + bankEndPoint;
+        return RestClientUtils.postRequest(httpClient, postPaymentUrl, paymentRequest);
+    }
+
+    private boolean isTransferSuccessful(ResponseEntity<Object> transferRequest) {
+        return transferRequest.getStatusCode() == HttpStatus.OK;
+    }
+
+    private void updateWalletBalance(Long user_id, double amount) {
         var balRequest = Balance.builder()
-                .amount(-amount)
+                .amount(amount)
                 .user_id(user_id)
                 .build();
-        return httpClient.getRestTemplate()
-                .postForEntity(postWalletUpdateUrl, balRequest, Object.class);
+        String postWalletUpdateUrl = baseUrl + walletEndpoint;
+        RestClientUtils.postRequest(httpClient, postWalletUpdateUrl, balRequest);
     }
+
+    private void updateTransactionStatus(Transaction tranData, String status) {
+        tranData.setWalletStatus(status);
+        tranData.setBankStatus(status);
+        transactionRepository.save(tranData);
+    }
+
+
 }
