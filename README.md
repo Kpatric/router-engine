@@ -46,7 +46,11 @@ Expectation
 3.Conitune if balance higher. Calculate charges and do the bank transfer.
 4.If transfer successful, update the wallet balance
 5.Persist the transaction.
+
 What I could have done better
+
 1.I could have included security module with spring security 
+
 2.I could have have included cloud architecture in my design
+
 3.I could have used k8s for orchestration
