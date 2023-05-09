@@ -41,10 +41,15 @@ How to run the application
 5. Execute the post
 
 Expectation
+
 1.Check wallet balance to be done and compared with the amount to be transferred.
+
 2.If balance is less than the amount return.
+
 3.Conitune if balance higher. Calculate charges and do the bank transfer.
+
 4.If transfer successful, update the wallet balance
+
 5.Persist the transaction.
 
 What I could have done better
